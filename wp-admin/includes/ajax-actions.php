@@ -379,7 +379,7 @@ function _wp_ajax_delete_comment_response( $comment_id, $delta = -1 ) {
 		// Here for completeness - not used.
 		'id' => $comment_id,
 		'supplemental' => array(
-			'total_items_i18n' => sprintf( _n( '1 item', '%s items', $total ), number_format_i18n( $total ) ),
+			'total_items_i18n' => sprintf( _n( '%s item', '%s items', $total ), number_format_i18n( $total ) ),
 			'total_pages' => ceil( $total / $per_page ),
 			'total_pages_i18n' => number_format_i18n( ceil( $total / $per_page ) ),
 			'total' => $total,
@@ -2445,7 +2445,13 @@ function wp_ajax_send_attachment_to_editor() {
 		$align = isset( $attachment['align'] ) ? $attachment['align'] : 'none';
 		$size = isset( $attachment['image-size'] ) ? $attachment['image-size'] : 'medium';
 		$alt = isset( $attachment['image_alt'] ) ? $attachment['image_alt'] : '';
+
+		// No whitespace-only captions.
 		$caption = isset( $attachment['post_excerpt'] ) ? $attachment['post_excerpt'] : '';
+		if ( '' === trim( $caption ) ) {
+			$caption = '';
+		}
+
 		$title = ''; // We no longer insert title tags into <img> tags, as they are redundant.
 		$html = get_image_send_to_editor( $id, $caption, $title, $align, $url, (bool) $rel, $size, $alt );
 	} elseif ( wp_attachment_is( 'video', $post ) || wp_attachment_is( 'audio', $post )  ) {
@@ -2484,8 +2490,8 @@ function wp_ajax_send_link_to_editor() {
 	if ( ! $src = esc_url_raw( $src ) )
 		wp_send_json_error();
 
-	if ( ! $title = trim( wp_unslash( $_POST['title'] ) ) )
-		$title = wp_basename( $src );
+	if ( ! $link_text = trim( wp_unslash( $_POST['link_text'] ) ) )
+		$link_text = wp_basename( $src );
 
 	$post = get_post( isset( $_POST['post_id'] ) ? $_POST['post_id'] : 0 );
 
@@ -2498,8 +2504,8 @@ function wp_ajax_send_link_to_editor() {
 	if ( $check_embed !== $fallback ) {
 		// TinyMCE view for [embed] will parse this
 		$html = '[embed]' . $src . '[/embed]';
-	} elseif ( $title ) {
-		$html = '<a href="' . esc_url( $src ) . '">' . $title . '</a>';
+	} elseif ( $link_text ) {
+		$html = '<a href="' . esc_url( $src ) . '">' . $link_text . '</a>';
 	} else {
 		$html = '';
 	}
@@ -2511,7 +2517,7 @@ function wp_ajax_send_link_to_editor() {
 			$type = $ext_type;
 
 	/** This filter is documented in wp-admin/includes/media.php */
-	$html = apply_filters( $type . '_send_to_editor_url', $html, $src, $title );
+	$html = apply_filters( $type . '_send_to_editor_url', $html, $src, $link_text );
 
 	wp_send_json_success( $html );
 }
@@ -2708,21 +2714,14 @@ function wp_ajax_parse_embed() {
 	}
 
 	$shortcode = wp_unslash( $_POST['shortcode'] );
-
-	preg_match( '/' . get_shortcode_regex() . '/s', $shortcode, $matches );
-	$atts = shortcode_parse_atts( $matches[3] );
-	if ( ! empty( $matches[5] ) ) {
-		$url = $matches[5];
-	} elseif ( ! empty( $atts['src'] ) ) {
-		$url = $atts['src'];
-	}
+	$url = str_replace( '[embed]', '', str_replace( '[/embed]', '', $shortcode ) );
 
 	$parsed = false;
 	setup_postdata( $post );
 
 	$wp_embed->return_false_on_fail = true;
 
-	if ( is_ssl() && 0 === strpos( $url, 'http://' ) ) {
+	if ( is_ssl() && preg_match( '%^\\[embed[^\\]]*\\]http://%i', $shortcode ) ) {
 		// Admin is ssl and the user pasted non-ssl URL.
 		// Check if the provider supports ssl embeds and use that for the preview.
 		$ssl_shortcode = preg_replace( '%^(\\[embed[^\\]]*\\])http://%i', '$1https://', $shortcode );
@@ -2775,8 +2774,7 @@ function wp_ajax_parse_embed() {
 	}
 
 	wp_send_json_success( array(
-		'body' => $parsed,
-		'attr' => $wp_embed->last_attr
+		'body' => $parsed
 	) );
 }
 
@@ -2881,8 +2879,12 @@ function wp_ajax_destroy_sessions() {
  * AJAX handler for updating a plugin.
  *
  * @since 4.2.0
+ *
+ * @see Plugin_Upgrader
  */
 function wp_ajax_update_plugin() {
+	global $wp_filesystem;
+
 	$plugin = urldecode( $_POST['plugin'] );
 
 	$status = array(
@@ -2892,6 +2894,7 @@ function wp_ajax_update_plugin() {
 		'oldVersion' => '',
 		'newVersion' => '',
 	);
+
 	$plugin_data = get_plugin_data( WP_PLUGIN_DIR . '/' . $plugin );
 	if ( $plugin_data['Version'] ) {
 		$status['oldVersion'] = sprintf( __( 'Version %s' ), $plugin_data['Version'] );
@@ -2906,16 +2909,19 @@ function wp_ajax_update_plugin() {
 
 	include_once( ABSPATH . 'wp-admin/includes/class-wp-upgrader.php' );
 
-	$current = get_site_transient( 'update_plugins' );
-	if ( empty( $current ) ) {
-		wp_update_plugins();
-	}
+	wp_update_plugins();
 
-	$upgrader = new Plugin_Upgrader( new Automatic_Upgrader_Skin() );
+	$skin = new Automatic_Upgrader_Skin();
+	$upgrader = new Plugin_Upgrader( $skin );
 	$result = $upgrader->bulk_upgrade( array( $plugin ) );
 
-	if ( is_array( $result ) ) {
+	if ( is_array( $result ) && empty( $result[$plugin] ) && is_wp_error( $skin->result ) ) {
+		$result = $skin->result;
+	}
+
+	if ( is_array( $result ) && !empty( $result[ $plugin ] ) ) {
 		$plugin_update_data = current( $result );
+
 		/*
 		 * If the `update_plugins` site transient is empty (e.g. when you update
 		 * two plugins in quick succession before the transient repopulates),
@@ -2927,23 +2933,35 @@ function wp_ajax_update_plugin() {
 		if ( $plugin_update_data === true ) {
  			wp_send_json_error( $status );
 		}
-		$plugin_data = get_plugin_data( WP_PLUGIN_DIR . '/' . $plugin );
+
+		$plugin_data = get_plugins( '/' . $result[ $plugin ]['destination_name'] );
+		$plugin_data = reset( $plugin_data );
+
 		if ( $plugin_data['Version'] ) {
 			$status['newVersion'] = sprintf( __( 'Version %s' ), $plugin_data['Version'] );
 		}
+
 		wp_send_json_success( $status );
 	} else if ( is_wp_error( $result ) ) {
 		$status['error'] = $result->get_error_message();
  		wp_send_json_error( $status );
-	} else if ( is_bool( $result ) && ! $result ) {
+
+ 	} else if ( is_bool( $result ) && ! $result ) {
 		$status['errorCode'] = 'unable_to_connect_to_filesystem';
 		$status['error'] = __( 'Unable to connect to the filesystem. Please confirm your credentials.' );
+
+		// Pass through the error from WP_Filesystem if one was raised
+		if ( is_wp_error( $wp_filesystem->errors ) && $wp_filesystem->errors->get_error_code() ) {
+			$status['error'] = $wp_filesystem->errors->get_error_message();
+		}
+
 		wp_send_json_error( $status );
+
 	}
 }
 
 /**
- * AJAX handler for saving a post from Ptrss This.
+ * AJAX handler for saving a post from Press This.
  *
  * @since 4.2.0
  */
@@ -2956,7 +2974,7 @@ function wp_ajax_press_this_save_post() {
 }
 
 /**
- * AJAX handler for creating new category from Ptrss This.
+ * AJAX handler for creating new category from Press This.
  *
  * @since 4.2.0
  */

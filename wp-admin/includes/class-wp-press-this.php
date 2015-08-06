@@ -8,11 +8,14 @@
  */
 
 /**
- * Press This class
+ * Press This class.
  *
  * @since 4.2.0
  */
 class WP_Press_This {
+
+	// Used to trigger the bookmarklet update notice.
+	public $version = 8;
 
 	private $images = array();
 
@@ -38,10 +41,6 @@ class WP_Press_This {
 	 */
 	public function site_settings() {
 		return array(
-			// Used to trigger the bookmarklet update notice.
-			// Needs to be set here and in get_shortcut_link() in wp-includes/link-template.php.
-			'version' => '8',
-
 			/**
 			 * Filter whether or not Press This should redirect the user in the parent window upon save.
 			 *
@@ -136,8 +135,8 @@ class WP_Press_This {
 
 		$updated = wp_update_post( $post, true );
 
-		if ( is_wp_error( $updated ) || intval( $updated ) < 1 ) {
-			wp_send_json_error( array( 'errorMessage' => __( 'Error while saving the post. Please try again later.' ) ) );
+		if ( is_wp_error( $updated ) ) {
+			wp_send_json_error( array( 'errorMessage' => $updated->get_error_message() ) );
 		} else {
 			if ( isset( $post['post_format'] ) ) {
 				if ( current_theme_supports( 'post-formats', $post['post_format'] ) ) {
@@ -148,23 +147,28 @@ class WP_Press_This {
 			}
 
 			if ( 'publish' === get_post_status( $post_id ) ) {
-				/**
-				 * Filter the URL to redirect to when Press This saves.
-				 *
-				 * @since 4.2.0
-				 *
-				 * @param string $url     Redirect URL. If `$status` is 'publish', this will be the post permalink.
-				 *                        Otherwise, the post edit URL will be used.
-				 * @param int    $post_id Post ID.
-				 * @param string $status  Post status.
-				 */
-				$redirect = apply_filters( 'press_this_save_redirect', get_post_permalink( $post_id ), $post_id, $post['post_status'] );
+				$redirect = get_post_permalink( $post_id );
 			} else {
-				/** This filter is documented in wp-admin/includes/class-wp-press-this.php */
-				$redirect = apply_filters( 'press_this_save_redirect', get_edit_post_link( $post_id, 'raw' ), $post_id, $post['post_status'] );
+				$redirect = false;
 			}
 
-			wp_send_json_success( array( 'redirect' => $redirect ) );
+			/**
+			 * Filter the URL to redirect to when Press This saves.
+			 *
+			 * @since 4.2.0
+			 *
+			 * @param string $url     Redirect URL. If `$status` is 'publish', this will be the post permalink.
+			 *                        Otherwise, the default is false resulting in no redirect.
+			 * @param int    $post_id Post ID.
+			 * @param string $status  Post status.
+			 */
+			$redirect = apply_filters( 'press_this_save_redirect', $redirect, $post_id, $post['post_status'] );
+
+			if ( $redirect ) {
+				wp_send_json_success( array( 'redirect' => $redirect ) );
+			} else {
+				wp_send_json_success( array( 'postSaved' => true ) );
+			}
 		}
 	}
 
@@ -246,8 +250,8 @@ class WP_Press_This {
 		$source_content  = '';
 
 		if ( ! is_wp_error( $source_tmp_file ) && file_exists( $source_tmp_file ) ) {
-			// Get the content of the source page from the tmp file..
 
+			// Get the content of the source page from the tmp file..
 			$source_content = wp_kses(
 				@file_get_contents( $source_tmp_file ),
 				array(
@@ -284,6 +288,15 @@ class WP_Press_This {
 		return $source_content;
 	}
 
+	/**
+	 * Utility method to limit an array to 50 values.
+	 *
+	 * @ignore
+	 * @since 4.2.0
+	 *
+	 * @param array $value Array to limit.
+	 * @return array Original array if fewer than 50 values, limited array, empty array otherwise.
+	 */
 	private function _limit_array( $value ) {
 		if ( is_array( $value ) ) {
 			if ( count( $value ) > 50 ) {
@@ -296,6 +309,17 @@ class WP_Press_This {
 		return array();
 	}
 
+	/**
+	 * Utility method to limit the length of a given string to 5,000 characters.
+	 *
+	 * @ignore
+	 * @since 4.2.0
+	 *
+	 * @param string $value String to limit.
+	 * @return bool|int|string If boolean or integer, that value. If a string, the original value
+	 *                         if fewer than 5,000 characters, a truncated version, otherwise an
+	 *                         empty string.
+	 */
 	private function _limit_string( $value ) {
 		$return = '';
 
@@ -315,6 +339,15 @@ class WP_Press_This {
 		return $return;
 	}
 
+	/**
+	 * Utility method to limit a given URL to 2,048 characters.
+	 *
+	 * @ignore
+	 * @since 4.2.0
+	 *
+	 * @param string $url URL to check for length and validity.
+	 * @return string Escaped URL if of valid length (< 2048) and makeup. Empty string otherwise.
+	 */
 	private function _limit_url( $url ) {
 		if ( ! is_string( $url ) ) {
 			return '';
@@ -343,6 +376,18 @@ class WP_Press_This {
 		return esc_url_raw( $url, array( 'http', 'https' ) );
 	}
 
+	/**
+	 * Utility method to limit image source URLs.
+	 *
+	 * Excluded URLs include share-this type buttons, loaders, spinners, spacers, WP interface images,
+	 * tiny buttons or thumbs, mathtag.com or quantserve.com images, or the WP stats gif.
+	 *
+	 * @ignore
+	 * @since 4.2.0
+	 *
+	 * @param string $src Image source URL.
+	 * @return string If not matched an excluded URL type, the original URL, empty string otherwise.
+	 */
 	private function _limit_img( $src ) {
 		$src = $this->_limit_url( $src );
 
@@ -378,6 +423,18 @@ class WP_Press_This {
 		return $src;
 	}
 
+	/**
+	 * Limit embed source URLs to specific providers.
+	 *
+	 * Not all core oEmbed providers are supported. Supported providers include YouTube, Vimeo,
+	 * Vine, Daily Motion, SoundCloud, and Twitter.
+	 *
+	 * @ignore
+	 * @since 4.2.0
+	 *
+	 * @param string $src Embed source URL.
+	 * @return string If not from a supported provider, an empty string. Otherwise, a reformattd embed URL.
+	 */
 	private function _limit_embed( $src ) {
 		$src = $this->_limit_url( $src );
 
@@ -409,6 +466,17 @@ class WP_Press_This {
 		return $src;
 	}
 
+	/**
+	 * Process a meta data entry from the source.
+	 *
+	 * @ignore
+	 * @since 4.2.0
+	 *
+	 * @param string $meta_name  Meta key name.
+	 * @param mixed  $meta_value Meta value.
+	 * @param array  $data       Associative array of source data.
+	 * @return array Processed data array.
+	 */
 	private function _process_meta_entry( $meta_name, $meta_value, $data ) {
 		if ( preg_match( '/:?(title|description|keywords|site_name)$/', $meta_name ) ) {
 			$data['_meta'][ $meta_name ] = $meta_value;
@@ -538,7 +606,7 @@ class WP_Press_This {
 			}
 		}
 
-		// Fetch and gather <link> data
+		// Fetch and gather <link> data.
 		if ( empty( $data['_links'] ) ) {
 			$data['_links'] = array();
 		}
@@ -788,7 +856,7 @@ class WP_Press_This {
 				<span class="dashicons dashicons-search"></span><span class="screen-reader-text"><?php _e( 'Search categories' ); ?></span>
 			</label>
 		</div>
-		<div role="application" aria-label="<?php esc_attr_e( 'Categories' ); ?>">
+		<div aria-label="<?php esc_attr_e( 'Categories' ); ?>">
 			<ul class="categories-select">
 				<?php wp_terms_checklist( $post->ID, array( 'taxonomy' => 'category', 'list_only' => true ) ); ?>
 			</ul>
@@ -850,8 +918,11 @@ class WP_Press_This {
 	/**
 	 * Get a list of embeds with no duplicates.
 	 *
+	 * @since 4.2.0
+	 * @access public
+	 *
 	 * @param array $data The site's data.
-	 * @returns array
+	 * @returns array Embeds selected to be available.
 	 */
 	public function get_embeds( $data ) {
 		$selected_embeds = array();
@@ -874,6 +945,9 @@ class WP_Press_This {
 
 	/**
 	 * Get a list of images with no duplicates.
+	 *
+	 * @since 4.2.0
+	 * @access public
 	 *
 	 * @param array $data The site's data.
 	 * @returns array
@@ -906,6 +980,9 @@ class WP_Press_This {
 	/**
 	 * Gets the source page's canonical link, based on passed location and meta data.
 	 *
+	 * @since 4.2.0
+	 * @access public
+	 *
  	 * @param array $data The site's data.
 	 * @returns string Discovered canonical URL, or empty
 	 */
@@ -934,6 +1011,9 @@ class WP_Press_This {
 	/**
 	 * Gets the source page's site name, based on passed meta data.
 	 *
+	 * @since 4.2.0
+	 * @access public
+	 *
 	 * @param array $data The site's data.
 	 * @returns string Discovered site name, or empty
 	 */
@@ -953,6 +1033,9 @@ class WP_Press_This {
 
 	/**
 	 * Gets the source page's title, based on passed title and meta data.
+	 *
+	 * @since 4.2.0
+	 * @access public
 	 *
 	 * @param array $data The site's data.
 	 * @returns string Discovered page title, or empty
@@ -977,7 +1060,11 @@ class WP_Press_This {
 
 	/**
 	 * Gets the source page's suggested content, based on passed data (description, selection, etc).
+	 *
 	 * Features a blockquoted excerpt, as well as content attribution, if any.
+	 *
+	 * @since 4.2.0
+	 * @access public
 	 *
 	 * @param array $data The site's data.
 	 * @returns string Discovered content, or empty
@@ -1201,10 +1288,12 @@ class WP_Press_This {
 				<span class="current-site-name"><?php bloginfo( 'name' ); ?></span>
 			</a>
 		</h1>
-		<button type="button" class="options-open button-subtle">
-			<span class="dashicons dashicons-tag"></span><span class="screen-reader-text"><?php _e( 'Show post options' ); ?></span>
+		<button type="button" class="options button-subtle closed">
+			<span class="dashicons dashicons-tag on-closed"></span>
+			<span class="screen-reader-text on-closed"><?php _e( 'Show post options' ); ?></span>
+			<span aria-hidden="true" class="on-open"><?php _e( 'Done' ); ?></span>
+			<span class="screen-reader-text on-open"><?php _e( 'Hide post options' ); ?></span>
 		</button>
-		<button type="button" class="options-close button-subtle is-hidden"><?php _e( 'Done' ); ?></button>
 	</div>
 
 	<div id="scanbar" class="scan">
@@ -1230,10 +1319,18 @@ class WP_Press_This {
 
 	<div class="wrapper">
 		<div class="editor-wrapper">
-			<div class="alerts">
-				<p class="alert is-notice is-hidden should-upgrade-bookmarklet">
-					<?php printf( __( 'You should upgrade <a href="%s" target="_blank">your bookmarklet</a> to the latest version!' ), admin_url( 'tools.php' ) ); ?>
-				</p>
+			<div class="alerts" role="alert" aria-live="assertive" aria-relevant="all" aria-atomic="true">
+				<?php
+
+				if ( isset( $data['v'] ) && $this->version > $data['v'] ) {
+					?>
+					<p class="alert is-notice">
+						<?php printf( __( 'You should upgrade <a href="%s" target="_blank">your bookmarklet</a> to the latest version!' ), admin_url( 'tools.php' ) ); ?>
+					</p>
+					<?php
+				}
+
+				?>
 			</div>
 
 			<div id="app-container" class="editor">
@@ -1279,7 +1376,7 @@ class WP_Press_This {
 				<?php if ( $supports_formats ) : ?>
 					<button type="button" class="button-reset post-option">
 						<span class="dashicons dashicons-admin-post"></span>
-						<span class="post-option-title"><?php _e( 'Format' ); ?></span>
+						<span class="post-option-title"><?php _ex( 'Format', 'post format' ); ?></span>
 						<span class="post-option-contents" id="post-option-post-format"><?php echo esc_html( get_post_format_string( $post_format ) ); ?></span>
 						<span class="dashicons post-option-forward"></span>
 					</button>
@@ -1302,7 +1399,7 @@ class WP_Press_This {
 				<div class="setting-modal is-off-screen is-hidden">
 					<button type="button" class="button-reset modal-close">
 						<span class="dashicons post-option-back"></span>
-						<span class="setting-title" aria-hidden="true"><?php _e( 'Post format' ); ?></span>
+						<span class="setting-title" aria-hidden="true"><?php _ex( 'Format', 'post format' ); ?></span>
 						<span class="screen-reader-text"><?php _e( 'Back to post options' ) ?></span>
 					</button>
 					<?php $this->post_formats_html( $post ); ?>
@@ -1337,7 +1434,12 @@ class WP_Press_This {
 			</button>
 		</div>
 		<div class="post-actions">
-			<button type="button" class="button-subtle draft-button"><?php _e( 'Save Draft' ); ?></button>
+			<span class="spinner">&nbsp;</span>
+			<button type="button" class="button-subtle draft-button" aria-live="polite">
+				<span class="save-draft"><?php _e( 'Save Draft' ); ?></span>
+				<span class="saving-draft"><?php _e( 'Saving...' ); ?></span>
+			</button>
+			<a href="<?php echo esc_url( get_edit_post_link( $post_ID ) ); ?>" class="edit-post-link" style="display: none;" target="_blank"><?php _e( 'Standard Editor' ); ?></a>
 			<button type="button" class="button-subtle preview-button"><?php _e( 'Preview' ); ?></button>
 			<button type="button" class="button-primary publish-button"><?php echo ( current_user_can( 'publish_posts' ) ) ? __( 'Publish' ) : __( 'Submit for Review' ); ?></button>
 		</div>

@@ -25,7 +25,7 @@ get_current_screen()->add_help_tab( array(
 
 get_current_screen()->set_help_sidebar(
 	'<p><strong>' . __('For more information:') . '</strong></p>' .
-	'<p>' . __('<a href="http://codex.wordpress.org/Tools_Screen" target="_blank">Documentation on Tools</a>') . '</p>' .
+	'<p>' . __('<a href="https://codex.wordpress.org/Tools_Screen" target="_blank">Documentation on Tools</a>') . '</p>' .
 	'<p>' . __('<a href="https://wordpress.org/support/" target="_blank">Support Forums</a>') . '</p>'
 );
 
@@ -38,7 +38,7 @@ require_once( ABSPATH . 'wp-admin/admin-header.php' );
 <?php if ( current_user_can('edit_posts') ) : ?>
 <div class="card pressthis">
 	<h3><?php _e('Press This') ?></h3>
-	<p><?php _e( 'Press This is a little app that lets you grab bits of the web and create new posts with ease.' );?></p>
+	<p><?php _e( 'Press This is a little tool that lets you grab bits of the web and create new posts with ease.' );?></p>
 	<p><?php _e( 'Use Press This to clip text, images and videos from any web page. Then edit and add more straight from Press This before you save or publish it in a post on your site.' ); ?></p>
 
 

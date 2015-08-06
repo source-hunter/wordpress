@@ -79,7 +79,8 @@ function wp_default_scripts( &$scripts ) {
 
 	$scripts->add( 'common', "/wp-admin/js/common$suffix.js", array('jquery', 'hoverIntent', 'utils'), false, 1 );
 	did_action( 'init' ) && $scripts->localize( 'common', 'commonL10n', array(
-		'warnDelete' => __("You are about to permanently delete the selected items.\n  'Cancel' to stop, 'OK' to delete.")
+		'warnDelete' => __( "You are about to permanently delete the selected items.\n  'Cancel' to stop, 'OK' to delete." ),
+		'dismiss'    => __( 'Dismiss this notice.' ),
 	) );
 
 	$scripts->add( 'wp-a11y', "/wp-includes/js/wp-a11y$suffix.js", array( 'jquery' ), false, 1 );
@@ -409,7 +410,7 @@ function wp_default_scripts( &$scripts ) {
 	$scripts->add( 'accordion', "/wp-admin/js/accordion$suffix.js", array( 'jquery' ), false, 1 );
 
 	$scripts->add( 'shortcode', "/wp-includes/js/shortcode$suffix.js", array( 'underscore' ), false, 1 );
-	$scripts->add( 'media-models', "/wp-includes/js/media/models$suffix.js", array( 'wp-backbone' ), false, 1 );
+	$scripts->add( 'media-models', "/wp-includes/js/media-models$suffix.js", array( 'wp-backbone' ), false, 1 );
 	did_action( 'init' ) && $scripts->localize( 'media-models', '_wpMediaModelsL10n', array(
 		'settings' => array(
 			'ajaxurl' => admin_url( 'admin-ajax.php', 'relative' ),
@@ -419,9 +420,9 @@ function wp_default_scripts( &$scripts ) {
 
 	// To enqueue media-views or media-editor, call wp_enqueue_media().
 	// Both rely on numerous settings, styles, and templates to operate correctly.
-	$scripts->add( 'media-views',  "/wp-includes/js/media/views$suffix.js",  array( 'utils', 'media-models', 'wp-plupload', 'jquery-ui-sortable', 'wp-mediaelement' ), false, 1 );
+	$scripts->add( 'media-views',  "/wp-includes/js/media-views$suffix.js",  array( 'utils', 'media-models', 'wp-plupload', 'jquery-ui-sortable', 'wp-mediaelement' ), false, 1 );
 	$scripts->add( 'media-editor', "/wp-includes/js/media-editor$suffix.js", array( 'shortcode', 'media-views' ), false, 1 );
-	$scripts->add( 'media-audiovideo', "/wp-includes/js/media/audio-video$suffix.js", array( 'media-editor' ), false, 1 );
+	$scripts->add( 'media-audiovideo', "/wp-includes/js/media-audiovideo$suffix.js", array( 'media-editor' ), false, 1 );
 	$scripts->add( 'mce-view', "/wp-includes/js/mce-view$suffix.js", array( 'shortcode', 'media-models', 'media-audiovideo', 'wp-playlist' ), false, 1 );
 
 	if ( is_admin() ) {
@@ -477,9 +478,11 @@ function wp_default_scripts( &$scripts ) {
 		$scripts->add( 'press-this', "/wp-admin/js/press-this$suffix.js", array( 'jquery', 'tags-box' ), false, 1 );
 		did_action( 'init' ) && $scripts->localize( 'press-this', 'pressThisL10n', array(
 			'newPost' => __( 'Title' ),
-			'unexpectedError' => __( 'Sorry, but an unexpected error occurred.' ),
+			'serverError' => __( 'Connection lost or the server is busy. Please try again later.' ),
 			'saveAlert' => __( 'The changes you made will be lost if you navigate away from this page.' ),
+			/* translators: %d: nth embed found in a post */
 			'suggestedEmbedAlt' => __( 'Suggested embed #%d' ),
+			/* translators: %d: nth image found in a post */
 			'suggestedImgAlt' => __( 'Suggested image #%d' ),
 		) );
 
@@ -497,7 +500,7 @@ function wp_default_scripts( &$scripts ) {
 
 		$scripts->add( 'admin-widgets', "/wp-admin/js/widgets$suffix.js", array( 'jquery-ui-sortable', 'jquery-ui-draggable', 'jquery-ui-droppable' ), false, 1 );
 
-		$scripts->add( 'theme', "/wp-admin/js/theme$suffix.js", array( 'wp-backbone' ), false, 1 );
+		$scripts->add( 'theme', "/wp-admin/js/theme$suffix.js", array( 'wp-backbone', 'wp-a11y' ), false, 1 );
 
 		$scripts->add( 'inline-edit-post', "/wp-admin/js/inline-edit-post$suffix.js", array( 'jquery', 'suggest' ), false, 1 );
 		did_action( 'init' ) && $scripts->localize( 'inline-edit-post', 'inlineEditL10n', array(
@@ -522,11 +525,22 @@ function wp_default_scripts( &$scripts ) {
 		did_action( 'init' ) && $scripts->localize( 'updates', '_wpUpdatesSettings', array(
 			'ajax_nonce' => wp_create_nonce( 'updates' ),
 			'l10n'       => array(
-				'updating'      => __( 'Updating...' ),
-				'updated'       => __( 'Updated!' ),
-				'updateFailed'  => __( 'Update failed' ),
-				'updatingMsg'   => __( 'Updating... please wait.' ),
-				'updatedMsg'    => __( 'Update completed successfully.' ),
+				'updating'          => __( 'Updating...' ),
+				'updated'           => __( 'Updated!' ),
+				'updateFailed'      => __( 'Update Failed' ),
+				/* translators: Plugin name and version */
+				'updatingLabel'     => __( 'Updating %s...' ),
+				/* translators: Plugin name and version */
+				'updatedLabel'      => __( '%s updated!' ),
+				/* translators: Plugin name and version */
+				'updateFailedLabel' => __( '%s update failed' ),
+				/* translators: JavaScript accessible string */
+				'updatingMsg'       => __( 'Updating... please wait.' ),
+				/* translators: JavaScript accessible string */
+				'updatedMsg'        => __( 'Update completed successfully.' ),
+				/* translators: JavaScript accessible string */
+				'updateCancel'      => __( 'Update canceled.' ),
+				'beforeunload'      => __( 'Plugin updates may not complete if you navigate away from this page.' ),
 			)
 		) );
 
@@ -545,7 +559,7 @@ function wp_default_scripts( &$scripts ) {
 
 		$scripts->add( 'list-revisions', "/wp-includes/js/wp-list-revisions$suffix.js" );
 
-		$scripts->add( 'media-grid', "/wp-includes/js/media/grid$suffix.js", array( 'media-editor' ), false, 1 );
+		$scripts->add( 'media-grid', "/wp-includes/js/media-grid$suffix.js", array( 'media-editor' ), false, 1 );
 		$scripts->add( 'media', "/wp-admin/js/media$suffix.js", array( 'jquery' ), false, 1 );
 		did_action( 'init' ) && $scripts->localize( 'media', 'attachMediaBoxL10n', array(
 			'error' => __( 'An error has occurred. Please reload the page and try again.' ),

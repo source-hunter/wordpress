@@ -4,7 +4,8 @@
  * WordPress View plugin.
  */
 tinymce.PluginManager.add( 'wpview', function( editor ) {
-	var selected,
+	var $ = editor.$,
+		selected,
 		Env = tinymce.Env,
 		VK = tinymce.util.VK,
 		TreeWalker = tinymce.dom.TreeWalker,
@@ -151,15 +152,20 @@ tinymce.PluginManager.add( 'wpview', function( editor ) {
 		};
 	}
 
-	// Remove the content of view wrappers from HTML string
-	function emptyViews( content ) {
-		return content.replace(/<div[^>]+data-wpview-text=\"([^"]+)"[^>]*>[\s\S]+?wpview-selection-after[^>]+>(?:&nbsp;|\u00a0)*<\/p><\/div>/g, '$1' );
+	function resetViewsCallback( match, viewText ) {
+		return '<p>' + window.decodeURIComponent( viewText ) + '</p>';
+	}
+
+	// Replace the view tags with the view string
+	function resetViews( content ) {
+		return content.replace( /<div[^>]+data-wpview-text="([^"]+)"[^>]*>(?:[\s\S]+?wpview-selection-after[^>]+>[^<>]*<\/p>\s*|\.)<\/div>/g, resetViewsCallback )
+			.replace( /<p [^>]*?data-wpview-marker="([^"]+)"[^>]*>[\s\S]*?<\/p>/g, resetViewsCallback );
 	}
 
 	// Prevent adding undo levels on changes inside a view wrapper
 	editor.on( 'BeforeAddUndo', function( event ) {
-		if ( event.lastLevel && emptyViews( event.level.content ) === emptyViews( event.lastLevel.content ) ) {
-			event.preventDefault();
+		if ( event.level.content ) {
+			event.level.content = resetViews( event.level.content );
 		}
 	});
 
@@ -169,18 +175,26 @@ tinymce.PluginManager.add( 'wpview', function( editor ) {
 	editor.on( 'BeforeSetContent', function( event ) {
 		var node;
 
+		if ( ! event.selection ) {
+			wp.mce.views.unbind();
+		}
+
 		if ( ! event.content ) {
 			return;
 		}
 
 		if ( ! event.load ) {
+			if ( selected ) {
+				removeView( selected );
+			}
+
 			node = editor.selection.getNode();
 
 			if ( node && node !== editor.getBody() && /^\s*https?:\/\/\S+\s*$/i.test( event.content ) ) {
 				// When a url is pasted or inserted, only try to embed it when it is in an empty paragrapgh.
 				node = editor.dom.getParent( node, 'p' );
 
-				if ( node && /^[\s\uFEFF\u00A0]*$/.test( node.textContent || node.innerText ) ) {
+				if ( node && /^[\s\uFEFF\u00A0]*$/.test( $( node ).text() || '' ) ) {
 					// Make sure there are no empty inline elements in the <p>
 					node.innerHTML = '';
 				} else {
@@ -335,21 +349,28 @@ tinymce.PluginManager.add( 'wpview', function( editor ) {
 		}
 	});
 
-	editor.on( 'PreProcess', function( event ) {
-		// Empty the wpview wrap nodes
-		tinymce.each( editor.dom.select( 'div[data-wpview-text]', event.node ), function( node ) {
-			node.textContent = node.innerText = '\u00a0';
+	// Empty the wpview wrap and marker nodes
+	function emptyViewNodes( rootNode ) {
+		$( 'div[data-wpview-text], p[data-wpview-marker]', rootNode ).each( function( i, node ) {
+			node.innerHTML = '.';
 		});
-    });
+	}
 
-    editor.on( 'PostProcess', function( event ) {
+	// Run that before the DOM cleanup
+	editor.on( 'PreProcess', function( event ) {
+		emptyViewNodes( event.node );
+	}, true );
+
+	editor.on( 'hide', function() {
+		wp.mce.views.unbind();
+		deselect();
+		emptyViewNodes();
+	});
+
+	editor.on( 'PostProcess', function( event ) {
 		if ( event.content ) {
-			event.content = event.content.replace( /<div [^>]*?data-wpview-text="([^"]*)"[^>]*>[\s\S]*?<\/div>/g, function( match, shortcode ) {
-				if ( shortcode ) {
-					return '<p>' + window.decodeURIComponent( shortcode ) + '</p>';
-				}
-				return ''; // If error, remove the view wrapper
-			});
+			event.content = event.content.replace( /<div [^>]*?data-wpview-text="([^"]+)"[^>]*>[\s\S]*?<\/div>/g, resetViewsCallback )
+				.replace( /<p [^>]*?data-wpview-marker="([^"]+)"[^>]*>[\s\S]*?<\/p>/g, resetViewsCallback );
 		}
 	});
 

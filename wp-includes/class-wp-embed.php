@@ -11,8 +11,6 @@ class WP_Embed {
 	public $post_ID;
 	public $usecache = true;
 	public $linkifunknown = true;
-	public $last_attr = array();
-	public $last_url = '';
 
 	/**
 	 * When an URL cannot be embedded, return false instead of returning a link
@@ -59,7 +57,7 @@ class WP_Embed {
 		add_shortcode( 'embed', array( $this, 'shortcode' ) );
 
 		// Do the shortcode (only the [embed] one is registered)
-		$content = do_shortcode( $content );
+		$content = do_shortcode( $content, true );
 
 		// Put the original shortcodes back
 		$shortcode_tags = $orig_shortcode_tags;
@@ -136,17 +134,12 @@ class WP_Embed {
 			$url = $attr['src'];
 		}
 
-		$this->last_url = $url;
 
-		if ( empty( $url ) ) {
-			$this->last_attr = $attr;
+		if ( empty( $url ) )
 			return '';
-		}
 
 		$rawattr = $attr;
 		$attr = wp_parse_args( $attr, wp_embed_defaults( $url ) );
-
-		$this->last_attr = $attr;
 
 		// kses converts & into &amp; and we need to undo this
 		// See https://core.trac.wordpress.org/ticket/11311
@@ -319,7 +312,14 @@ class WP_Embed {
 	 * @return string Potentially modified $content.
 	 */
 	public function autoembed( $content ) {
-		return preg_replace_callback( '|^(\s*)(https?://[^\s"]+)(\s*)$|im', array( $this, 'autoembed_callback' ), $content );
+		// Replace line breaks from all HTML elements with placeholders.
+		$content = wp_replace_in_html_tags( $content, array( "\n" => '<!-- wp-line-break -->' ) );
+
+		// Find URLs that are on their own line.
+		$content = preg_replace_callback( '|^(\s*)(https?://[^\s"]+)(\s*)$|im', array( $this, 'autoembed_callback' ), $content );
+
+		// Put the line breaks back.
+		return str_replace( '<!-- wp-line-break -->', "\n", $content );
 	}
 
 	/**

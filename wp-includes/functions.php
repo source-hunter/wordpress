@@ -781,8 +781,9 @@ function add_query_arg() {
 	wp_parse_str( $query, $qs );
 	$qs = urlencode_deep( $qs ); // this re-URL-encodes things that were already in the query string
 	if ( is_array( $args[0] ) ) {
-		$kayvees = $args[0];
-		$qs = array_merge( $qs, $kayvees );
+		foreach ( $args[0] as $k => $v ) {
+			$qs[ $k ] = $v;
+		}
 	} else {
 		$qs[ $args[0] ] = $args[1];
 	}
@@ -2052,7 +2053,7 @@ function wp_check_filetype( $filename, $mimes = null ) {
 	$ext = false;
 
 	foreach ( $mimes as $ext_preg => $mime_match ) {
-		$ext_preg = '!\.(' . $ext_preg . ')(\?.*)?$!i';
+		$ext_preg = '!\.(' . $ext_preg . ')$!i';
 		if ( preg_match( $ext_preg, $filename, $ext_matches ) ) {
 			$type = $mime_match;
 			$ext = $ext_matches[1];
@@ -2957,40 +2958,40 @@ function smilies_init() {
 		  ':arrow:' => "\xe2\x9e\xa1",
 		  ':shock:' => "\xf0\x9f\x98\xaf",
 		  ':smile:' => 'simple-smile.png',
-		    ':???:' => "\xf0\x9f\x98\xaf",
+		    ':???:' => "\xf0\x9f\x98\x95",
 		   ':cool:' => "\xf0\x9f\x98\x8e",
 		   ':evil:' => "\xf0\x9f\x91\xbf",
-		   ':grin:' => "\xf0\x9f\x98\x84",
+		   ':grin:' => "\xf0\x9f\x98\x80",
 		   ':idea:' => "\xf0\x9f\x92\xa1",
 		   ':oops:' => "\xf0\x9f\x98\xb3",
 		   ':razz:' => "\xf0\x9f\x98\x9b",
 		   ':roll:' => 'rolleyes.png',
 		   ':wink:' => "\xf0\x9f\x98\x89",
 		    ':cry:' => "\xf0\x9f\x98\xa5",
-		    ':eek:' => "\xf0\x9f\x98\xaf",
-		    ':lol:' => "\xf0\x9f\x98\x84",
+		    ':eek:' => "\xf0\x9f\x98\xae",
+		    ':lol:' => "\xf0\x9f\x98\x86",
 		    ':mad:' => "\xf0\x9f\x98\xa1",
-		    ':sad:' => "\xf0\x9f\x98\xa6",
+		    ':sad:' => 'frownie.png',
 		      '8-)' => "\xf0\x9f\x98\x8e",
 		      '8-O' => "\xf0\x9f\x98\xaf",
-		      ':-(' => "\xf0\x9f\x98\xa6",
+		      ':-(' => 'frownie.png',
 		      ':-)' => 'simple-smile.png',
-		      ':-?' => "\xf0\x9f\x98\xaf",
-		      ':-D' => "\xf0\x9f\x98\x84",
+		      ':-?' => "\xf0\x9f\x98\x95",
+		      ':-D' => "\xf0\x9f\x98\x80",
 		      ':-P' => "\xf0\x9f\x98\x9b",
-		      ':-o' => "\xf0\x9f\x98\xaf",
+		      ':-o' => "\xf0\x9f\x98\xae",
 		      ':-x' => "\xf0\x9f\x98\xa1",
 		      ':-|' => "\xf0\x9f\x98\x90",
 		      ';-)' => "\xf0\x9f\x98\x89",
 		// This one transformation breaks regular text with frequency.
 		//     '8)' => "\xf0\x9f\x98\x8e",
 		       '8O' => "\xf0\x9f\x98\xaf",
-		       ':(' => "\xf0\x9f\x98\xa6",
+		       ':(' => 'frownie.png',
 		       ':)' => 'simple-smile.png',
-		       ':?' => "\xf0\x9f\x98\xaf",
-		       ':D' => "\xf0\x9f\x98\x84",
+		       ':?' => "\xf0\x9f\x98\x95",
+		       ':D' => "\xf0\x9f\x98\x80",
 		       ':P' => "\xf0\x9f\x98\x9b",
-		       ':o' => "\xf0\x9f\x98\xaf",
+		       ':o' => "\xf0\x9f\x98\xae",
 		       ':x' => "\xf0\x9f\x98\xa1",
 		       ':|' => "\xf0\x9f\x98\x90",
 		       ';)' => "\xf0\x9f\x98\x89",
@@ -3555,11 +3556,11 @@ function _doing_it_wrong( $function, $message, $version ) {
 	if ( WP_DEBUG && apply_filters( 'doing_it_wrong_trigger_error', true ) ) {
 		if ( function_exists( '__' ) ) {
 			$version = is_null( $version ) ? '' : sprintf( __( '(This message was added in version %s.)' ), $version );
-			$message .= ' ' . __( 'Please see <a href="http://codex.wordpress.org/Debugging_in_WordPress">Debugging in WordPress</a> for more information.' );
+			$message .= ' ' . __( 'Please see <a href="https://codex.wordpress.org/Debugging_in_WordPress">Debugging in WordPress</a> for more information.' );
 			trigger_error( sprintf( __( '%1$s was called <strong>incorrectly</strong>. %2$s %3$s' ), $function, $message, $version ) );
 		} else {
 			$version = is_null( $version ) ? '' : sprintf( '(This message was added in version %s.)', $version );
-			$message .= ' Please see <a href="http://codex.wordpress.org/Debugging_in_WordPress">Debugging in WordPress</a> for more information.';
+			$message .= ' Please see <a href="https://codex.wordpress.org/Debugging_in_WordPress">Debugging in WordPress</a> for more information.';
 			trigger_error( sprintf( '%1$s was called <strong>incorrectly</strong>. %2$s %3$s', $function, $message, $version ) );
 		}
 	}
@@ -4182,7 +4183,7 @@ function wp_scheduled_delete() {
  * If the file data is not within that first 8kiB, then the author should correct
  * their plugin file and move the data headers to the top.
  *
- * @link http://codex.wordpress.org/File_Header
+ * @link https://codex.wordpress.org/File_Header
  *
  * @since 2.9.0
  *

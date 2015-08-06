@@ -6,6 +6,7 @@
 	var PressThis = function() {
 		var editor, $mediaList, $mediaThumbWrap,
 			saveAlert             = false,
+			editLinkVisible       = false,
 			textarea              = document.createElement( 'textarea' ),
 			sidebarIsOpen         = false,
 			settings              = window.wpPressThisConfig || {},
@@ -101,20 +102,30 @@
 		 * Show UX spinner
 		 */
 		function showSpinner() {
-			$( '#spinner' ).addClass( 'show' );
-			$( '.post-actions button' ).each( function() {
-				$( this ).attr( 'disabled', 'disabled' );
-			} );
+			$( '.spinner' ).addClass( 'is-active' );
+			$( '.post-actions button' ).attr( 'disabled', 'disabled' );
 		}
 
 		/**
 		 * Hide UX spinner
 		 */
 		function hideSpinner() {
-			$( '#spinner' ).removeClass( 'show' );
-			$( '.post-actions button' ).each( function() {
-				$( this ).removeAttr( 'disabled' );
-			} );
+			$( '.spinner' ).removeClass( 'is-active' );
+			$( '.post-actions button' ).removeAttr( 'disabled' );
+		}
+
+		/**
+		 * Replace emoji images with chars and sanitize the text content.
+		 */
+		function getTitleText() {
+			var $element = $( '#title-container' );
+
+			$element.find( 'img.emoji' ).each( function() {
+				var $image = $( this );
+				$image.replaceWith( $( '<span>' ).text( $image.attr( 'alt' ) ) );
+			});
+
+			return sanitizeText( $element.text() );
 		}
 
 		/**
@@ -126,7 +137,7 @@
 
 			editor && editor.save();
 
-			$( '#post_title' ).val( sanitizeText( $( '#title-container' ).text() ) );
+			$( '#post_title' ).val( getTitleText() );
 
 			// Make sure to flush out the tags with tagBox before saving
 			if ( window.tagBox ) {
@@ -152,7 +163,8 @@
 		 * @param action string publish|draft
 		 */
 		function submitPost( action ) {
-			var data;
+			var data,
+				keepFocus = $( document.activeElement ).hasClass( 'draft-button' );
 
 			saveAlert = false;
 			showSpinner();
@@ -167,24 +179,54 @@
 			$.ajax( {
 				type: 'post',
 				url: window.ajaxurl,
-				data: data,
-				success: function( response ) {
-					if ( ! response.success ) {
-						renderError( response.data.errorMessage );
-						hideSpinner();
-					} else if ( response.data.redirect ) {
-						if ( window.opener && settings.redirInParent ) {
-							try {
-								window.opener.location.href = response.data.redirect;
-							} catch( er ) {}
+				data: data
+			}).always( function() {
+				hideSpinner();
+				clearNotices();
+			}).done( function( response ) {
+				var $link, $button;
 
-							window.self.close();
-						} else {
-							window.location.href = response.data.redirect;
-						}
+				if ( ! response.success ) {
+					renderError( response.data.errorMessage );
+				} else if ( response.data.redirect ) {
+					if ( window.opener && settings.redirInParent ) {
+						try {
+							window.opener.location.href = response.data.redirect;
+						} catch( er ) {}
+
+						window.self.close();
+					} else {
+						window.location.href = response.data.redirect;
 					}
+				} else if ( response.data.postSaved ) {
+					$link = $( '.edit-post-link' );
+					$button = $( '.draft-button' );
+					editLinkVisible = true;
+
+					$button.fadeOut( 200, function() {
+						$button.removeClass( 'is-saving' );
+						$link.fadeIn( 200, function() {
+							var active = document.activeElement;
+							// Different browsers move the focus to different places when the button is disabled.
+							if ( keepFocus && ( active === $button[0] || $( active ).hasClass( 'post-actions' ) || active.nodeName === 'BODY' ) ) {
+								$link.focus();
+							}
+						});
+					});
 				}
-			} );
+			}).fail( function() {
+				renderError( __( 'serverError' ) );
+			});
+		}
+
+		function resetDraftButton() {
+			if ( editLinkVisible ) {
+				editLinkVisible = false;
+
+				$( '.edit-post-link' ).fadeOut( 200, function() {
+					$( '.draft-button' ).removeClass( 'is-saving' ).fadeIn( 200 );
+				});
+			}
 		}
 
 		/**
@@ -310,6 +352,10 @@
 			renderNotice( msg, true );
 		}
 
+		function clearNotices() {
+			$( 'div.alerts' ).empty();
+		}
+
 		/**
 		 * Render notices on page load, if any already
 		 */
@@ -319,11 +365,6 @@
 				$.each( data.errors, function( i, msg ) {
 					renderError( msg );
 				} );
-			}
-
-			// Prompt user to upgrade their bookmarklet if there is a version mismatch.
-			if ( data.v && settings.version && ( data.v + '' ) !== ( settings.version + '' ) ) {
-				$( '.should-upgrade-bookmarklet' ).removeClass( 'is-hidden' );
 			}
 		}
 
@@ -474,11 +515,12 @@
 		function openSidebar() {
 			sidebarIsOpen = true;
 
-			$( '.options-open, .press-this-actions, #scanbar' ).addClass( isHidden );
-			$( '.options-close, .options-panel-back' ).removeClass( isHidden );
+			$( '.options' ).removeClass( 'closed' ).addClass( 'open' );
+			$( '.press-this-actions, #scanbar' ).addClass( isHidden );
+			$( '.options-panel-back' ).removeClass( isHidden );
 
 			$( '.options-panel' ).removeClass( offscreenHidden )
-				.one( 'transitionend', function() {
+				.one( transitionEndEvent, function() {
 					$( '.post-option:first' ).focus();
 				} );
 		}
@@ -486,11 +528,12 @@
 		function closeSidebar() {
 			sidebarIsOpen = false;
 
-			$( '.options-close, .options-panel-back' ).addClass( isHidden );
-			$( '.options-open, .press-this-actions, #scanbar' ).removeClass( isHidden );
+			$( '.options' ).removeClass( 'open' ).addClass( 'closed' );
+			$( '.options-panel-back' ).addClass( isHidden );
+			$( '.press-this-actions, #scanbar' ).removeClass( isHidden );
 
 			$( '.options-panel' ).addClass( isOffScreen )
-				.one( 'transitionend', function() {
+				.one( transitionEndEvent, function() {
 					$( this ).addClass( isHidden );
 					// Reset to options list
 					$( '.post-options' ).removeClass( offscreenHidden );
@@ -502,18 +545,60 @@
 		 * Interactive behavior for the post title's field placeholder
 		 */
 		function monitorPlaceholder() {
-			var $titleField = $( '#title-container'),
-				$placeholder = $('.post-title-placeholder');
+			var $titleField = $( '#title-container' ),
+				$placeholder = $( '.post-title-placeholder' );
 
 			$titleField.on( 'focus', function() {
-				$placeholder.addClass('is-hidden');
+				$placeholder.addClass( 'is-hidden' );
+				resetDraftButton();
 			}).on( 'blur', function() {
-				if ( ! $titleField.text() ) {
-					$placeholder.removeClass('is-hidden');
+				if ( ! $titleField.text() && ! $titleField.html() ) {
+					$placeholder.removeClass( 'is-hidden' );
 				}
+			}).on( 'keyup', function() {
+				saveAlert = true;
+			}).on( 'paste', function( event ) {
+				var text, range,
+					clipboard = event.originalEvent.clipboardData || window.clipboardData;
+
+				if ( clipboard ) {
+					try{
+						text = clipboard.getData( 'Text' ) || clipboard.getData( 'text/plain' );
+
+						if ( text ) {
+							text = $.trim( text.replace( /\s+/g, ' ' ) );
+
+							if ( window.getSelection ) {
+								range = window.getSelection().getRangeAt(0);
+
+								if ( range ) {
+									if ( ! range.collapsed ) {
+										range.deleteContents();
+									}
+
+									range.insertNode( document.createTextNode( text ) );
+								}
+							} else if ( document.selection ) {
+								range = document.selection.createRange();
+
+								if ( range ) {
+									range.text = text;
+								}
+							}
+						}
+					} catch ( er ) {}
+
+					event.preventDefault();
+				}
+
+				saveAlert = true;
+
+				setTimeout( function() {
+					$titleField.text( getTitleText() );
+				}, 50 );
 			});
 
-			if ( $titleField.text() ) {
+			if ( $titleField.text() || $titleField.html() ) {
 				$placeholder.addClass('is-hidden');
 			}
 		}
@@ -562,12 +647,13 @@
 		/**
 		 * Set app events and other state monitoring related code.
 		 */
-		function monitor(){
+		function monitor() {
 			$( document ).on( 'tinymce-editor-init', function( event, ed ) {
 				editor = ed;
 
-				ed.on( 'focus', function() {
+				editor.on( 'nodechange', function() {
 					hasSetFocus = true;
+					resetDraftButton();
 				} );
 			}).on( 'click.press-this keypress.press-this', '.suggested-media-thumbnail', function( event ) {
 				if ( event.type === 'click' || event.keyCode === 13 ) {
@@ -576,21 +662,27 @@
 			});
 
 			// Publish, Draft and Preview buttons
-
 			$( '.post-actions' ).on( 'click.press-this', function( event ) {
-				var $target = $( event.target );
+				var $target = $( event.target ),
+					$button = $target.closest( 'button' );
 
-				if ( $target.hasClass( 'draft-button' ) ) {
-					submitPost( 'draft' );
-				} else if ( $target.hasClass( 'publish-button' ) ) {
-					submitPost( 'publish' );
-				} else if ( $target.hasClass( 'preview-button' ) ) {
-					prepareFormData();
-					window.opener && window.opener.focus();
+				if ( $button.length ) {
+					if ( $button.hasClass( 'draft-button' ) ) {
+						$button.addClass( 'is-saving' );
+						submitPost( 'draft' );
+					} else if ( $button.hasClass( 'publish-button' ) ) {
+						submitPost( 'publish' );
+					} else if ( $button.hasClass( 'preview-button' ) ) {
+						prepareFormData();
+						window.opener && window.opener.focus();
 
-					$( '#wp-preview' ).val( 'dopreview' );
-					$( '#pressthis-form' ).attr( 'target', '_blank' ).submit().attr( 'target', '' );
-					$( '#wp-preview' ).val( '' );
+						$( '#wp-preview' ).val( 'dopreview' );
+						$( '#pressthis-form' ).attr( 'target', '_blank' ).submit().attr( 'target', '' );
+						$( '#wp-preview' ).val( '' );
+					}
+				} else if ( $target.hasClass( 'edit-post-link' ) && window.opener ) {
+					window.opener.focus();
+					window.self.close();
 				}
 			});
 
@@ -598,8 +690,13 @@
 			monitorPlaceholder();
 			monitorCatList();
 
-			$( '.options-open' ).on( 'click.press-this', openSidebar );
-			$( '.options-close' ).on( 'click.press-this', closeSidebar );
+			$( '.options' ).on( 'click.press-this', function() {
+				if ( $( this ).hasClass( 'open' ) ) {
+					closeSidebar();
+				} else {
+					openSidebar();
+				}
+			});
 
 			// Close the sidebar when focus moves outside of it.
 			$( '.options-panel, .options-panel-back' ).on( 'focusout.press-this', function() {
@@ -610,7 +707,7 @@
 					if ( sidebarIsOpen && node && ! $node.hasClass( 'options-panel-back' ) &&
 						( node.nodeName === 'BODY' ||
 							( ! $node.closest( '.options-panel' ).length &&
-							! $node.closest( '.options-open' ).length ) ) ) {
+							! $node.closest( '.options' ).length ) ) ) {
 
 						closeSidebar();
 					}

@@ -424,12 +424,6 @@ function get_comment_class( $class = '', $comment_id = null, $post_id = null ) {
 	if ( $comment->user_id > 0 && $user = get_userdata( $comment->user_id ) ) {
 		$classes[] = 'byuser';
 		$classes[] = 'comment-author-' . sanitize_html_class( $user->user_nicename, $comment->user_id );
-
-		// If a comment author is also a member of the site (multisite).
-		if ( is_user_member_of_blog( $comment->user_id ) ) {
-			$classes[] = 'comment-author-is-site-member';
-		}
-
 		// For comment authors who are the author of the post
 		if ( $post = get_post($post_id) ) {
 			if ( $comment->user_id === $post->post_author ) {
@@ -2258,6 +2252,9 @@ function comment_form( $args = array(), $post_id = null ) {
 	 */
 	$args = wp_parse_args( $args, apply_filters( 'comment_form_defaults', $defaults ) );
 
+	// Ensure that the filtered args contain all required default values.
+	$args = array_merge( $defaults, $args );
+
 		if ( comments_open( $post_id ) ) : ?>
 			<?php
 			/**
@@ -2393,7 +2390,7 @@ function comment_form( $args = array(), $post_id = null ) {
 						 * @since 4.2.0
 						 *
 						 * @param string $submit_field HTML markup for the submit field.
-						 * @param array  $args         Arguments passed to `comment_form()`.
+						 * @param array  $args         Arguments passed to comment_form().
 						 */
 						echo apply_filters( 'comment_form_submit_field', $submit_field, $args );
 
